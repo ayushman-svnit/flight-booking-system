@@ -5,6 +5,7 @@ import axios from "axios";
 
 const AdminDashboard = () => {
   const { user, logout, API_BASE } = useAuth();
+  const navigate = useNavigate();
   const [flights, setFlights] = useState([]);
   const [bookings, setBookings] = useState([]);
   const [showAddFlight, setShowAddFlight] = useState(false);
