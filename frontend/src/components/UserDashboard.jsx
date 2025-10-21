@@ -42,10 +42,16 @@ const UserDashboard = () => {
   const fetchBookings = async () => {
     setLoadingBookings(true);
     try {
-      const response = await axios.get(`${API_BASE}/bookings`);
+      const token = localStorage.getItem("token");
+      const response = await axios.get(`${API_BASE}/bookings`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
       setBookings(response.data);
     } catch (error) {
       console.error("Error fetching bookings:", error);
+      alert("Failed to load bookings. Please try again.");
     } finally {
       setLoadingBookings(false);
     }
@@ -70,38 +76,61 @@ const UserDashboard = () => {
 
   const bookFlight = async (flightId, passengers, travelDate = null) => {
     try {
+      const token = localStorage.getItem("token");
       const bookingData = {
         flight_id: flightId,
         passengers_count: passengers,
         payment_method: "credit_card",
       };
-      
+
       if (travelDate) {
         bookingData.travel_date = travelDate;
       }
-      
-      await axios.post(`${API_BASE}/bookings`, bookingData);
-      alert("Booking successful!");
+
+      const response = await axios.post(`${API_BASE}/bookings`, bookingData, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      alert(`Booking successful! Your PNR: ${response.data.pnr_number}`);
       fetchBookings();
       searchFlights();
       setShowDateSelector(false);
       setSelectedFlight(null);
       setSelectedTravelDate("");
     } catch (error) {
-      alert(
-        "Booking failed: " + (error.response?.data?.detail || "Unknown error")
-      );
+      console.error("Booking error details:", error);
+
+      let errorMessage = "Booking failed: ";
+      if (error.response?.data?.detail) {
+        errorMessage += error.response.data.detail;
+      } else if (error.response?.data?.message) {
+        errorMessage += error.response.data.message;
+      } else if (error.message) {
+        errorMessage += error.message;
+      } else {
+        errorMessage += "Unknown error occurred";
+      }
+
+      alert(errorMessage);
     }
   };
 
   const handleBookingClick = (flight) => {
     const passengers = prompt("Enter number of passengers:");
     if (passengers && !isNaN(passengers)) {
+      const passengerCount = parseInt(passengers);
+      if (passengerCount <= 0) {
+        alert("Please enter a valid number of passengers");
+        return;
+      }
+
       if (flight.is_daily) {
-        setSelectedFlight({ ...flight, passengers: parseInt(passengers) });
+        setSelectedFlight({ ...flight, passengers: passengerCount });
         setShowDateSelector(true);
       } else {
-        bookFlight(flight.flight_id, parseInt(passengers));
+        bookFlight(flight.flight_id, passengerCount);
       }
     }
   };
@@ -109,8 +138,8 @@ const UserDashboard = () => {
   const confirmDailyFlightBooking = () => {
     if (selectedTravelDate && selectedFlight) {
       bookFlight(
-        selectedFlight.flight_id, 
-        selectedFlight.passengers, 
+        selectedFlight.flight_id,
+        selectedFlight.passengers,
         selectedTravelDate
       );
     } else {
@@ -125,36 +154,42 @@ const UserDashboard = () => {
 
   const confirmDeleteBooking = async () => {
     if (!bookingToDelete) return;
-    
+
     setDeletingBookingId(bookingToDelete.booking_id);
-    
+
     try {
+      const token = localStorage.getItem("token");
       const response = await axios.delete(
-        `${API_BASE}/bookings/${bookingToDelete.booking_id}`
+        `${API_BASE}/bookings/${bookingToDelete.booking_id}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
       );
-      
+
       // Show success notification
       setNotification({
-        type: 'success',
-        message: `Booking cancelled successfully! Refund of ₹${response.data.refund_amount} will be processed.`
+        type: "success",
+        message: `Booking cancelled successfully! Refund of ₹${response.data.refund_amount} will be processed.`,
       });
-      
+
       // Auto-hide notification after 5 seconds
       setTimeout(() => setNotification(null), 5000);
-      
+
       // Refresh bookings and flights
       await fetchBookings();
       if (activeTab === "search") {
         await searchFlights();
       }
-      
     } catch (error) {
-      const errorMessage = error.response?.data?.detail || "Failed to cancel booking";
+      const errorMessage =
+        error.response?.data?.detail || "Failed to cancel booking";
       setNotification({
-        type: 'error',
-        message: `Error: ${errorMessage}`
+        type: "error",
+        message: `Error: ${errorMessage}`,
       });
-      
+
       // Auto-hide notification after 5 seconds
       setTimeout(() => setNotification(null), 5000);
     } finally {
@@ -169,7 +204,7 @@ const UserDashboard = () => {
     if (booking.booking_status === "cancelled") {
       return false;
     }
-    
+
     // Check if travel date is in the future
     if (booking.travel_date) {
       const travelDate = new Date(booking.travel_date);
@@ -177,7 +212,7 @@ const UserDashboard = () => {
       today.setHours(0, 0, 0, 0);
       return travelDate > today;
     }
-    
+
     return true; // For non-daily flights, allow cancellation (backend will validate)
   };
 
@@ -193,10 +228,10 @@ const UserDashboard = () => {
         <div className={`notification-toast ${notification.type}`}>
           <div className="notification-content">
             <span className="notification-icon">
-              {notification.type === 'success' ? '✅' : '❌'}
+              {notification.type === "success" ? "✅" : "❌"}
             </span>
             <span className="notification-message">{notification.message}</span>
-            <button 
+            <button
               onClick={() => setNotification(null)}
               className="notification-close"
             >
@@ -314,9 +349,7 @@ const UserDashboard = () => {
                       <div className="flight-header">
                         <h3>{flight.flight_number}</h3>
                         {flight.is_daily && (
-                          <span className="daily-badge">
-                            🔄 Daily Flight
-                          </span>
+                          <span className="daily-badge">🔄 Daily Flight</span>
                         )}
                       </div>
                       <p className="route">
@@ -325,24 +358,35 @@ const UserDashboard = () => {
                       {flight.is_daily ? (
                         <>
                           <p className="flight-time">
-                            Departure: {flight.departure_time_only || 
-                              new Date(flight.departure_time).toLocaleTimeString([], {
-                                hour: '2-digit',
-                                minute: '2-digit'
-                              })} (Daily)
+                            Departure:{" "}
+                            {flight.departure_time_only ||
+                              new Date(
+                                flight.departure_time
+                              ).toLocaleTimeString([], {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}{" "}
+                            (Daily)
                           </p>
                           <p className="flight-time">
-                            Arrival: {flight.arrival_time_only || 
-                              new Date(flight.arrival_time).toLocaleTimeString([], {
-                                hour: '2-digit',
-                                minute: '2-digit'
-                              })} (Daily)
+                            Arrival:{" "}
+                            {flight.arrival_time_only ||
+                              new Date(flight.arrival_time).toLocaleTimeString(
+                                [],
+                                {
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                }
+                              )}{" "}
+                            (Daily)
                           </p>
                           <p className="flight-duration">
-                            Duration: {flight.duration_minutes ? 
-                              `${Math.floor(flight.duration_minutes / 60)}h ${flight.duration_minutes % 60}m` :
-                              'N/A'
-                            }
+                            Duration:{" "}
+                            {flight.duration_minutes
+                              ? `${Math.floor(flight.duration_minutes / 60)}h ${
+                                  flight.duration_minutes % 60
+                                }m`
+                              : "N/A"}
                           </p>
                         </>
                       ) : (
@@ -360,13 +404,13 @@ const UserDashboard = () => {
                     </div>
 
                     <div className="flight-actions">
-                      <p className="flight-price">₹{flight.price.toLocaleString()}</p>
+                      <p className="flight-price">
+                        ₹{flight.price.toLocaleString()}
+                      </p>
                       <p className="flight-seats">
-                        {flight.is_daily ? (
-                          `${flight.total_seats} seats available daily`
-                        ) : (
-                          `${flight.available_seats} seats available`
-                        )}
+                        {flight.is_daily
+                          ? `${flight.total_seats} seats available daily`
+                          : `${flight.available_seats} seats available`}
                       </p>
                       <button
                         onClick={() => handleBookingClick(flight)}
@@ -391,13 +435,20 @@ const UserDashboard = () => {
                   <div className="date-selector-modal">
                     <h3>Select Travel Date</h3>
                     <p className="modal-flight-info">
-                      Flight: {selectedFlight.flight_number}<br />
-                      Route: {selectedFlight.source_city} → {selectedFlight.destination_city}<br />
-                      Passengers: {selectedFlight.passengers}<br />
-                      Daily Departure: {selectedFlight.departure_time_only || 
-                        new Date(selectedFlight.departure_time).toLocaleTimeString([], {
-                          hour: '2-digit',
-                          minute: '2-digit'
+                      Flight: {selectedFlight.flight_number}
+                      <br />
+                      Route: {selectedFlight.source_city} →{" "}
+                      {selectedFlight.destination_city}
+                      <br />
+                      Passengers: {selectedFlight.passengers}
+                      <br />
+                      Daily Departure:{" "}
+                      {selectedFlight.departure_time_only ||
+                        new Date(
+                          selectedFlight.departure_time
+                        ).toLocaleTimeString([], {
+                          hour: "2-digit",
+                          minute: "2-digit",
                         })}
                     </p>
                     <div className="modal-form">
@@ -406,19 +457,23 @@ const UserDashboard = () => {
                         type="date"
                         value={selectedTravelDate}
                         onChange={(e) => setSelectedTravelDate(e.target.value)}
-                        min={new Date(Date.now() + 86400000).toISOString().split('T')[0]} // Tomorrow
+                        min={
+                          new Date(Date.now() + 86400000)
+                            .toISOString()
+                            .split("T")[0]
+                        } // Tomorrow
                         className="form-input"
                         required
                       />
                       <div className="modal-actions">
-                        <button 
+                        <button
                           onClick={confirmDailyFlightBooking}
                           className="submit-button"
                           disabled={!selectedTravelDate}
                         >
                           Confirm Booking
                         </button>
-                        <button 
+                        <button
                           onClick={() => {
                             setShowDateSelector(false);
                             setSelectedFlight(null);
@@ -451,73 +506,87 @@ const UserDashboard = () => {
                 ) : (
                   <>
                     {bookings.map((booking) => (
-                  <div 
-                    key={booking.booking_id} 
-                    className={`booking-card ${booking.booking_status === 'cancelled' ? 'cancelled' : ''}`}
-                  >
-                    <div className="booking-info">
-                      <h3>PNR: {booking.pnr_number}</h3>
-                      <p className="booking-detail">
-                        {booking.passengers_count} passenger(s)
-                      </p>
-                      <p className="booking-time">
-                        Booked on:{" "}
-                        {new Date(booking.booking_date).toLocaleString()}
-                      </p>
-                      {booking.travel_date && (
-                        <p className="travel-date">
-                          Travel Date:{" "}
-                          {new Date(booking.travel_date).toLocaleDateString()}
-                        </p>
-                      )}
-                      <p className="booking-status">
-                        Status:{" "}
-                        <span className={`status-${booking.booking_status}`}>
-                          {booking.booking_status}
-                        </span>
-                      </p>
-                    </div>
-
-                    <div className="booking-actions">
-                      <p className="booking-amount">₹{booking.total_amount}</p>
-                      <p className="payment-status">
-                        Payment: {booking.payment_status}
-                      </p>
-                      {canCancelBooking(booking) && (
-                        <button
-                          onClick={() => handleDeleteBooking(booking)}
-                          disabled={deletingBookingId === booking.booking_id}
-                          className={`delete-booking-button ${
-                            deletingBookingId === booking.booking_id ? "deleting" : ""
-                          }`}
-                        >
-                          {deletingBookingId === booking.booking_id ? (
-                            <>
-                              <span className="loading-spinner"></span>
-                              Cancelling...
-                            </>
-                          ) : (
-                            <>
-                              <span className="delete-icon">🗑️</span>
-                              Cancel Booking
-                            </>
+                      <div
+                        key={booking.booking_id}
+                        className={`booking-card ${
+                          booking.booking_status === "cancelled"
+                            ? "cancelled"
+                            : ""
+                        }`}
+                      >
+                        <div className="booking-info">
+                          <h3>PNR: {booking.pnr_number}</h3>
+                          <p className="booking-detail">
+                            {booking.passengers_count} passenger(s)
+                          </p>
+                          <p className="booking-time">
+                            Booked on:{" "}
+                            {new Date(booking.booking_date).toLocaleString()}
+                          </p>
+                          {booking.travel_date && (
+                            <p className="travel-date">
+                              Travel Date:{" "}
+                              {new Date(
+                                booking.travel_date
+                              ).toLocaleDateString()}
+                            </p>
                           )}
-                        </button>
-                      )}
-                      {booking.booking_status === "cancelled" && (
-                        <p className="cancelled-info">
-                          <span className="cancelled-icon">❌</span>
-                          Booking Cancelled
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                ))}
+                          <p className="booking-status">
+                            Status:{" "}
+                            <span
+                              className={`status-${booking.booking_status}`}
+                            >
+                              {booking.booking_status}
+                            </span>
+                          </p>
+                        </div>
 
-                {bookings.length === 0 && !loadingBookings && (
-                  <p className="no-results">No bookings found.</p>
-                )}
-                </>
+                        <div className="booking-actions">
+                          <p className="booking-amount">
+                            ₹{booking.total_amount}
+                          </p>
+                          <p className="payment-status">
+                            Payment: {booking.payment_status}
+                          </p>
+                          {canCancelBooking(booking) && (
+                            <button
+                              onClick={() => handleDeleteBooking(booking)}
+                              disabled={
+                                deletingBookingId === booking.booking_id
+                              }
+                              className={`delete-booking-button ${
+                                deletingBookingId === booking.booking_id
+                                  ? "deleting"
+                                  : ""
+                              }`}
+                            >
+                              {deletingBookingId === booking.booking_id ? (
+                                <>
+                                  <span className="loading-spinner"></span>
+                                  Cancelling...
+                                </>
+                              ) : (
+                                <>
+                                  <span className="delete-icon">🗑️</span>
+                                  Cancel Booking
+                                </>
+                              )}
+                            </button>
+                          )}
+                          {booking.booking_status === "cancelled" && (
+                            <p className="cancelled-info">
+                              <span className="cancelled-icon">❌</span>
+                              Booking Cancelled
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+
+                    {bookings.length === 0 && !loadingBookings && (
+                      <p className="no-results">No bookings found.</p>
+                    )}
+                  </>
                 )}
               </div>
             </div>
@@ -540,16 +609,27 @@ const UserDashboard = () => {
                 Are you sure you want to cancel this booking?
               </p>
               <div className="booking-details">
-                <p><strong>PNR:</strong> {bookingToDelete.pnr_number}</p>
-                <p><strong>Passengers:</strong> {bookingToDelete.passengers_count}</p>
-                <p><strong>Amount:</strong> ₹{bookingToDelete.total_amount}</p>
+                <p>
+                  <strong>PNR:</strong> {bookingToDelete.pnr_number}
+                </p>
+                <p>
+                  <strong>Passengers:</strong>{" "}
+                  {bookingToDelete.passengers_count}
+                </p>
+                <p>
+                  <strong>Amount:</strong> ₹{bookingToDelete.total_amount}
+                </p>
                 {bookingToDelete.travel_date && (
-                  <p><strong>Travel Date:</strong> {new Date(bookingToDelete.travel_date).toLocaleDateString()}</p>
+                  <p>
+                    <strong>Travel Date:</strong>{" "}
+                    {new Date(bookingToDelete.travel_date).toLocaleDateString()}
+                  </p>
                 )}
               </div>
               <div className="refund-info">
                 <p className="refund-notice">
-                  💰 Full refund of ₹{bookingToDelete.total_amount} will be processed
+                  💰 Full refund of ₹{bookingToDelete.total_amount} will be
+                  processed
                 </p>
               </div>
             </div>

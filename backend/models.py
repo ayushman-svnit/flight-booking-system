@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, validator
 from datetime import datetime
 from typing import Optional, List
 
@@ -58,8 +58,22 @@ class FlightResponse(FlightBase):
 class BookingBase(BaseModel):
     flight_id: int
     passengers_count: int
-    travel_date: Optional[datetime] = None  # For daily flights
-
+    travel_date: Optional[str] = None  # Accept string instead of datetime
+    
+    @validator('travel_date')
+    def validate_travel_date(cls, v):
+        if v is not None:
+            try:
+                # Try to parse as datetime
+                return datetime.fromisoformat(v.replace('Z', '+00:00'))
+            except ValueError:
+                try:
+                    # Try to parse as date string (YYYY-MM-DD)
+                    return datetime.strptime(v, '%Y-%m-%d')
+                except ValueError:
+                    raise ValueError('Invalid date format. Use YYYY-MM-DD or ISO datetime format')
+        return v
+    
 class BookingCreate(BookingBase):
     payment_method: str
 
