@@ -85,6 +85,10 @@ class Flight(Base):
     available_seats = Column(Integer, nullable=False)
     price = Column(Float, nullable=False)
     flight_status = Column(String(20), default="scheduled")  # Changed from Enum
+    is_daily = Column(Boolean, default=False)  # New field for daily flights
+    departure_time_only = Column(String(8))  # Store time as HH:MM:SS for daily flights
+    arrival_time_only = Column(String(8))  # Store time as HH:MM:SS for daily flights
+    duration_minutes = Column(Integer)  # Flight duration in minutes
     created_by = Column(Integer, ForeignKey("users.user_id"))
     created_at = Column(DateTime, default=datetime.utcnow)
     
@@ -100,6 +104,7 @@ class Booking(Base):
     user_id = Column(Integer, ForeignKey("users.user_id"))
     flight_id = Column(Integer, ForeignKey("flights.flight_id"))
     booking_date = Column(DateTime, default=datetime.utcnow)
+    travel_date = Column(DateTime)  # New field for selected travel date (for daily flights)
     passengers_count = Column(Integer, nullable=False)
     total_amount = Column(Float, nullable=False)
     booking_status = Column(String(20), default="confirmed")  # Changed from Enum
