@@ -37,6 +37,10 @@ class FlightBase(BaseModel):
     arrival_time: datetime
     total_seats: int
     price: float
+    is_daily: Optional[bool] = False
+    departure_time_only: Optional[str] = None
+    arrival_time_only: Optional[str] = None
+    duration_minutes: Optional[int] = None
 
 class FlightCreate(FlightBase):
     pass
@@ -54,6 +58,7 @@ class FlightResponse(FlightBase):
 class BookingBase(BaseModel):
     flight_id: int
     passengers_count: int
+    travel_date: Optional[datetime] = None  # For daily flights
 
 class BookingCreate(BookingBase):
     payment_method: str
@@ -63,6 +68,7 @@ class BookingResponse(BaseModel):
     user_id: int
     flight_id: int
     booking_date: datetime
+    travel_date: Optional[datetime] = None
     passengers_count: int
     total_amount: float
     booking_status: str

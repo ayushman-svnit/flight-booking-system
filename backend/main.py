@@ -111,8 +111,33 @@ def create_flight(
     if current_user.user_type != "admin":
         raise HTTPException(status_code=403, detail="Not authorized")
     
+    # Calculate duration and time-only fields for daily flights
+    duration_minutes = None
+    departure_time_only = None
+    arrival_time_only = None
+    
+    if flight.is_daily:
+        # Calculate duration in minutes
+        duration = flight.arrival_time - flight.departure_time
+        duration_minutes = int(duration.total_seconds() / 60)
+        
+        # Extract time components for daily flights
+        departure_time_only = flight.departure_time.strftime("%H:%M:%S")
+        arrival_time_only = flight.arrival_time.strftime("%H:%M:%S")
+    
     db_flight = Flight(
-        **flight.dict(),
+        flight_number=flight.flight_number,
+        airline_id=flight.airline_id,
+        source_city=flight.source_city,
+        destination_city=flight.destination_city,
+        departure_time=flight.departure_time,
+        arrival_time=flight.arrival_time,
+        total_seats=flight.total_seats,
+        price=flight.price,
+        is_daily=flight.is_daily or False,
+        departure_time_only=departure_time_only,
+        arrival_time_only=arrival_time_only,
+        duration_minutes=duration_minutes,
         available_seats=flight.total_seats,
         created_by=current_user.user_id
     )
@@ -134,6 +159,16 @@ def create_booking(
     if not flight:
         raise HTTPException(status_code=404, detail="Flight not found")
     
+    # For daily flights, validate travel_date is provided
+    if flight.is_daily and not booking.travel_date:
+        raise HTTPException(status_code=400, detail="Travel date is required for daily flights")
+    
+    # For daily flights, check if travel_date is in the future
+    if flight.is_daily and booking.travel_date:
+        from datetime import date
+        if booking.travel_date.date() <= date.today():
+            raise HTTPException(status_code=400, detail="Travel date must be in the future")
+    
     if flight.available_seats < booking.passengers_count:
         raise HTTPException(status_code=400, detail="Not enough seats available")
     
@@ -147,13 +182,16 @@ def create_booking(
     db_booking = Booking(
         user_id=current_user.user_id,
         flight_id=booking.flight_id,
+        travel_date=booking.travel_date if flight.is_daily else None,
         passengers_count=booking.passengers_count,
         total_amount=total_amount,
         pnr_number=pnr_number
     )
     
-    # Update available seats
-    flight.available_seats -= booking.passengers_count
+    # For regular flights, update available seats
+    # For daily flights, we don't reduce available seats as they operate daily
+    if not flight.is_daily:
+        flight.available_seats -= booking.passengers_count
     
     db.add(db_booking)
     db.commit()
@@ -185,6 +223,63 @@ def get_user_bookings(
 ):
     return db.query(Booking).filter(Booking.user_id == current_user.user_id).all()
 
+@app.delete("/bookings/{booking_id}")
+def delete_user_booking(
+    booking_id: int,
+    current_user: User = Depends(auth.get_current_user),
+    db: Session = Depends(get_db)
+):
+    # Get the booking
+    booking = db.query(Booking).filter(
+        Booking.booking_id == booking_id,
+        Booking.user_id == current_user.user_id
+    ).first()
+    
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found or not authorized")
+    
+    # Check if booking can be cancelled (e.g., not for past travel dates)
+    if booking.travel_date:
+        from datetime import date
+        if booking.travel_date.date() <= date.today():
+            raise HTTPException(
+                status_code=400, 
+                detail="Cannot cancel booking for past or current travel date"
+            )
+    else:
+        # For non-daily flights, check departure time
+        flight = db.query(Flight).filter(Flight.flight_id == booking.flight_id).first()
+        if flight and flight.departure_time.date() <= datetime.now().date():
+            raise HTTPException(
+                status_code=400, 
+                detail="Cannot cancel booking for past or current flight"
+            )
+    
+    # Check if booking is already cancelled
+    if booking.booking_status == "cancelled":
+        raise HTTPException(status_code=400, detail="Booking is already cancelled")
+    
+    # Get the flight to restore seats (for non-daily flights)
+    flight = db.query(Flight).filter(Flight.flight_id == booking.flight_id).first()
+    
+    # Cancel the booking
+    booking.booking_status = "cancelled"
+    
+    # For non-daily flights, restore the seats
+    if flight and not flight.is_daily:
+        flight.available_seats += booking.passengers_count
+    
+    # Update payment status
+    booking.payment_status = "refunded"
+    
+    db.commit()
+    
+    return {
+        "message": "Booking cancelled successfully",
+        "booking_id": booking_id,
+        "refund_amount": booking.total_amount
+    }
+
 # Admin endpoints
 @app.get("/admin/flights", response_model=List[models.FlightResponse])
 def get_all_flights(
@@ -195,6 +290,38 @@ def get_all_flights(
         raise HTTPException(status_code=403, detail="Not authorized")
     
     return db.query(Flight).all()
+
+@app.delete("/admin/flights/{flight_id}")
+def delete_flight(
+    flight_id: int,
+    current_user: User = Depends(auth.get_current_user),
+    db: Session = Depends(get_db)
+):
+    if current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    # Check if flight exists
+    flight = db.query(Flight).filter(Flight.flight_id == flight_id).first()
+    if not flight:
+        raise HTTPException(status_code=404, detail="Flight not found")
+    
+    # Check if there are any bookings for this flight
+    existing_bookings = db.query(Booking).filter(
+        Booking.flight_id == flight_id,
+        Booking.booking_status.in_(["confirmed", "pending"])
+    ).count()
+    
+    if existing_bookings > 0:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Cannot delete flight. {existing_bookings} active booking(s) exist for this flight."
+        )
+    
+    # Delete the flight
+    db.delete(flight)
+    db.commit()
+    
+    return {"message": "Flight deleted successfully", "flight_id": flight_id}
 
 @app.get("/admin/bookings", response_model=List[models.BookingResponse])
 def get_all_bookings(
