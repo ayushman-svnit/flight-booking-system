@@ -30,6 +30,11 @@ const AdminDashboard = () => {
   const fetchFlights = async () => {
     try {
       const token = localStorage.getItem("token");
+      if (!token) {
+        console.error("No token found, redirecting to login");
+        navigate("/login");
+        return;
+      }
       const response = await axios.get(`${API_BASE}/admin/flights`, {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -38,12 +43,23 @@ const AdminDashboard = () => {
       setFlights(response.data);
     } catch (error) {
       console.error("Error fetching flights:", error);
+      if (error.response?.status === 401) {
+        console.error("Unauthorized access, redirecting to login");
+        localStorage.removeItem("token");
+        localStorage.removeItem("user");
+        navigate("/login");
+      }
     }
   };
 
   const fetchBookings = async () => {
     try {
       const token = localStorage.getItem("token");
+      if (!token) {
+        console.error("No token found, redirecting to login");
+        navigate("/login");
+        return;
+      }
       const response = await axios.get(`${API_BASE}/admin/bookings`, {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -52,6 +68,12 @@ const AdminDashboard = () => {
       setBookings(response.data);
     } catch (error) {
       console.error("Error fetching bookings:", error);
+      if (error.response?.status === 401) {
+        console.error("Unauthorized access, redirecting to login");
+        localStorage.removeItem("token");
+        localStorage.removeItem("user");
+        navigate("/login");
+      }
     }
   };
 
@@ -227,7 +249,7 @@ const AdminDashboard = () => {
                         <input
                           type="time"
                           placeholder="Departure Time"
-                          value={newFlight.departure_time}
+                          value={newFlight.departure_time ? newFlight.departure_time.split('T')[1] || newFlight.departure_time : ""}
                           onChange={(e) => {
                             const today = new Date().toISOString().split('T')[0];
                             setNewFlight({
@@ -241,7 +263,7 @@ const AdminDashboard = () => {
                         <input
                           type="time"
                           placeholder="Arrival Time"
-                          value={newFlight.arrival_time}
+                          value={newFlight.arrival_time ? newFlight.arrival_time.split('T')[1] || newFlight.arrival_time : ""}
                           onChange={(e) => {
                             const today = new Date().toISOString().split('T')[0];
                             setNewFlight({
@@ -299,11 +321,11 @@ const AdminDashboard = () => {
                     <input
                       type="number"
                       placeholder="Price"
-                      value={newFlight.price}
+                      value={newFlight.price || ""}
                       onChange={(e) =>
                         setNewFlight({
                           ...newFlight,
-                          price: parseFloat(e.target.value),
+                          price: parseFloat(e.target.value) || 0,
                         })
                       }
                       className="form-input"
