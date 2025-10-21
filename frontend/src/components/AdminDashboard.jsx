@@ -56,7 +56,11 @@ const AdminDashboard = () => {
   };
 
   const deleteFlight = async (flightId) => {
-    if (!window.confirm("Are you sure you want to delete this flight? This action cannot be undone.")) {
+    if (
+      !window.confirm(
+        "Are you sure you want to delete this flight? This action cannot be undone."
+      )
+    ) {
       return;
     }
 
@@ -81,7 +85,31 @@ const AdminDashboard = () => {
     e.preventDefault();
     try {
       const token = localStorage.getItem("token");
-      await axios.post(`${API_BASE}/flights`, newFlight, {
+
+      // Prepare flight data for submission
+      const flightData = { ...newFlight };
+
+      if (flightData.is_daily) {
+        // For daily flights, create proper datetime objects with today's date
+        const today = new Date().toISOString().split("T")[0];
+
+        // Create full datetime strings with today's date and selected time
+        if (flightData.departure_time.includes("T")) {
+          // If it's already a datetime string, use it as is
+          flightData.departure_time = flightData.departure_time;
+        } else {
+          // If it's just time, combine with today's date
+          flightData.departure_time = `${today}T${flightData.departure_time}:00`;
+        }
+
+        if (flightData.arrival_time.includes("T")) {
+          flightData.arrival_time = flightData.arrival_time;
+        } else {
+          flightData.arrival_time = `${today}T${flightData.arrival_time}:00`;
+        }
+      }
+
+      await axios.post(`${API_BASE}/flights`, flightData, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -111,6 +139,14 @@ const AdminDashboard = () => {
   const handleLogout = () => {
     logout();
     navigate("/login");
+  };
+
+  // Handle time input changes for daily flights
+  const handleTimeChange = (field, value) => {
+    setNewFlight((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
   };
 
   return (
@@ -201,7 +237,7 @@ const AdminDashboard = () => {
                       className="form-input"
                       required
                     />
-                    
+
                     <div className="daily-flight-option">
                       <label className="checkbox-label">
                         <input
@@ -211,72 +247,70 @@ const AdminDashboard = () => {
                             setNewFlight({
                               ...newFlight,
                               is_daily: e.target.checked,
+                              // Reset time fields when switching flight type
+                              departure_time: "",
+                              arrival_time: "",
                             })
                           }
                           className="checkbox-input"
                         />
                         <span className="checkbox-text">Daily Flight</span>
                         <span className="checkbox-help">
-                          Check this for flights that operate daily at the same time
+                          Check this for flights that operate daily at the same
+                          time
                         </span>
                       </label>
                     </div>
 
                     {newFlight.is_daily ? (
                       <>
+                        <label className="form-label">
+                          Departure Time (Daily)
+                        </label>
                         <input
                           type="time"
-                          placeholder="Departure Time"
                           value={newFlight.departure_time}
-                          onChange={(e) => {
-                            const today = new Date().toISOString().split('T')[0];
-                            setNewFlight({
-                              ...newFlight,
-                              departure_time: `${today}T${e.target.value}`,
-                            });
-                          }}
+                          onChange={(e) =>
+                            handleTimeChange("departure_time", e.target.value)
+                          }
                           className="form-input"
                           required
                         />
+                        <label className="form-label">
+                          Arrival Time (Daily)
+                        </label>
                         <input
                           type="time"
-                          placeholder="Arrival Time"
                           value={newFlight.arrival_time}
-                          onChange={(e) => {
-                            const today = new Date().toISOString().split('T')[0];
-                            setNewFlight({
-                              ...newFlight,
-                              arrival_time: `${today}T${e.target.value}`,
-                            });
-                          }}
+                          onChange={(e) =>
+                            handleTimeChange("arrival_time", e.target.value)
+                          }
                           className="form-input"
                           required
                         />
                       </>
                     ) : (
                       <>
+                        <label className="form-label">
+                          Departure Date & Time
+                        </label>
                         <input
                           type="datetime-local"
-                          placeholder="Departure Time"
                           value={newFlight.departure_time}
                           onChange={(e) =>
-                            setNewFlight({
-                              ...newFlight,
-                              departure_time: e.target.value,
-                            })
+                            handleTimeChange("departure_time", e.target.value)
                           }
                           className="form-input"
                           required
                         />
+                        <label className="form-label">
+                          Arrival Date & Time
+                        </label>
                         <input
                           type="datetime-local"
-                          placeholder="Arrival Time"
                           value={newFlight.arrival_time}
                           onChange={(e) =>
-                            setNewFlight({
-                              ...newFlight,
-                              arrival_time: e.target.value,
-                            })
+                            handleTimeChange("arrival_time", e.target.value)
                           }
                           className="form-input"
                           required
@@ -327,16 +361,19 @@ const AdminDashboard = () => {
 
               <div className="flights-list">
                 {flights.map((flight) => (
-                  <div key={flight.flight_id} className="flight-card admin-flight-card">
+                  <div
+                    key={flight.flight_id}
+                    className="flight-card admin-flight-card"
+                  >
                     <div className="flight-info">
                       <div className="flight-header">
                         <h3>{flight.flight_number}</h3>
                         <div className="flight-badges">
-                          <span className="flight-id">ID: {flight.flight_id}</span>
+                          <span className="flight-id">
+                            ID: {flight.flight_id}
+                          </span>
                           {flight.is_daily && (
-                            <span className="daily-badge">
-                              🔄 Daily Flight
-                            </span>
+                            <span className="daily-badge">🔄 Daily Flight</span>
                           )}
                         </div>
                       </div>
@@ -348,26 +385,33 @@ const AdminDashboard = () => {
                           <>
                             <p className="flight-time">
                               <span className="time-label">Departure:</span>
-                              {flight.departure_time_only || 
-                                new Date(flight.departure_time).toLocaleTimeString([], {
-                                  hour: '2-digit',
-                                  minute: '2-digit'
-                                })} (Daily)
+                              {flight.departure_time_only ||
+                                new Date(
+                                  flight.departure_time
+                                ).toLocaleTimeString([], {
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })}{" "}
+                              (Daily)
                             </p>
                             <p className="flight-time">
                               <span className="time-label">Arrival:</span>
-                              {flight.arrival_time_only || 
-                                new Date(flight.arrival_time).toLocaleTimeString([], {
-                                  hour: '2-digit',
-                                  minute: '2-digit'
-                                })} (Daily)
+                              {flight.arrival_time_only ||
+                                new Date(
+                                  flight.arrival_time
+                                ).toLocaleTimeString([], {
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })}{" "}
+                              (Daily)
                             </p>
                             <p className="flight-duration">
                               <span className="time-label">Duration:</span>
-                              {flight.duration_minutes ? 
-                                `${Math.floor(flight.duration_minutes / 60)}h ${flight.duration_minutes % 60}m` :
-                                'N/A'
-                              }
+                              {flight.duration_minutes
+                                ? `${Math.floor(
+                                    flight.duration_minutes / 60
+                                  )}h ${flight.duration_minutes % 60}m`
+                                : "N/A"}
                             </p>
                           </>
                         ) : (
@@ -387,24 +431,37 @@ const AdminDashboard = () => {
                         <p className="flight-seats">
                           {flight.is_daily ? (
                             <>
-                              <span className="seats-total">{flight.total_seats}</span>
-                              <span className="seats-label">seats available daily</span>
+                              <span className="seats-total">
+                                {flight.total_seats}
+                              </span>
+                              <span className="seats-label">
+                                seats available daily
+                              </span>
                             </>
                           ) : (
                             <>
-                              <span className="seats-available">{flight.available_seats}</span>
+                              <span className="seats-available">
+                                {flight.available_seats}
+                              </span>
                               <span className="seats-divider">/</span>
-                              <span className="seats-total">{flight.total_seats}</span>
+                              <span className="seats-total">
+                                {flight.total_seats}
+                              </span>
                               <span className="seats-label">seats</span>
                             </>
                           )}
                         </p>
                         {!flight.is_daily && (
                           <div className="capacity-bar">
-                            <div 
+                            <div
                               className="capacity-fill"
                               style={{
-                                width: `${((flight.total_seats - flight.available_seats) / flight.total_seats) * 100}%`
+                                width: `${
+                                  ((flight.total_seats -
+                                    flight.available_seats) /
+                                    flight.total_seats) *
+                                  100
+                                }%`,
                               }}
                             ></div>
                           </div>
@@ -414,8 +471,12 @@ const AdminDashboard = () => {
 
                     <div className="flight-actions admin-actions">
                       <div className="flight-price-section">
-                        <p className="flight-price">₹{flight.price.toLocaleString()}</p>
-                        <p className={`flight-status status-${flight.flight_status}`}>
+                        <p className="flight-price">
+                          ₹{flight.price.toLocaleString()}
+                        </p>
+                        <p
+                          className={`flight-status status-${flight.flight_status}`}
+                        >
                           {flight.flight_status}
                         </p>
                       </div>
@@ -434,7 +495,9 @@ const AdminDashboard = () => {
                 ))}
                 {flights.length === 0 && (
                   <div className="no-results">
-                    <p>No flights found. Add your first flight to get started!</p>
+                    <p>
+                      No flights found. Add your first flight to get started!
+                    </p>
                   </div>
                 )}
               </div>
