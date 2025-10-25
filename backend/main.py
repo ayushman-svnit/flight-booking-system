@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from typing import List
 import secrets
 
@@ -116,22 +116,38 @@ def create_flight(
     departure_time_only = None
     arrival_time_only = None
     
+    # Parse datetime strings if needed
+    departure_dt = flight.departure_time
+    arrival_dt = flight.arrival_time
+    
+    if isinstance(flight.departure_time, str):
+        try:
+            departure_dt = datetime.fromisoformat(flight.departure_time.replace('Z', '+00:00'))
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid departure time format")
+    
+    if isinstance(flight.arrival_time, str):
+        try:
+            arrival_dt = datetime.fromisoformat(flight.arrival_time.replace('Z', '+00:00'))
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid arrival time format")
+    
     if flight.is_daily:
         # Calculate duration in minutes
-        duration = flight.arrival_time - flight.departure_time
+        duration = arrival_dt - departure_dt
         duration_minutes = int(duration.total_seconds() / 60)
         
         # Extract time components for daily flights
-        departure_time_only = flight.departure_time.strftime("%H:%M:%S")
-        arrival_time_only = flight.arrival_time.strftime("%H:%M:%S")
+        departure_time_only = departure_dt.strftime("%H:%M:%S")
+        arrival_time_only = arrival_dt.strftime("%H:%M:%S")
     
     db_flight = Flight(
         flight_number=flight.flight_number,
         airline_id=flight.airline_id,
         source_city=flight.source_city,
         destination_city=flight.destination_city,
-        departure_time=flight.departure_time,
-        arrival_time=flight.arrival_time,
+        departure_time=departure_dt,
+        arrival_time=arrival_dt,
         total_seats=flight.total_seats,
         price=flight.price,
         is_daily=flight.is_daily or False,
@@ -165,7 +181,6 @@ def create_booking(
     
     # For daily flights, check if travel_date is in the future
     if flight.is_daily and booking.travel_date:
-        from datetime import date
         if booking.travel_date.date() <= date.today():
             raise HTTPException(status_code=400, detail="Travel date must be in the future")
     
@@ -240,7 +255,6 @@ def delete_user_booking(
     
     # Check if booking can be cancelled (e.g., not for past travel dates)
     if booking.travel_date:
-        from datetime import date
         if booking.travel_date.date() <= date.today():
             raise HTTPException(
                 status_code=400, 
