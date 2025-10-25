@@ -85,7 +85,18 @@ This project is a full-stack flight booking system that allows users to search f
 
     This will start the React development server, typically on `http://localhost:5173`.
 
-## 💻 Project Structure
+## � Login Credentials
+
+### Admin Access
+- **Username:** `admin`
+- **Password:** `admin123`
+
+### Test Users
+You can register new users or use existing registered accounts.
+
+**Note:** For more details, see [CREDENTIALS.md](./CREDENTIALS.md)
+
+## �💻 Project Structure
 
 ```
 📂 FlightBookingSystem

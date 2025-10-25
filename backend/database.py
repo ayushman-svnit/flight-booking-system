@@ -141,11 +141,12 @@ def init_data():
         # Check if admin user exists
         admin_user = db.query(User).filter(User.username == "admin").first()
         if not admin_user:
-            # Create admin user
+            # Create admin user with password 'admin123'
+            from auth import get_password_hash
             admin_user = User(
                 username="admin",
                 email="admin@flight.com",
-                password_hash="$2b$12$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPGga31lW",  # "secret"
+                password_hash=get_password_hash("admin123"),
                 first_name="System",
                 last_name="Admin",
                 user_type="admin"

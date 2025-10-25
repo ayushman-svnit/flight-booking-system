@@ -1,9 +1,9 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Poppins:wght@300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Poppins:wght@300;400;500;600;700;800;900&display=swap');
 :root {
     /* Enhanced Aviation-themed Color Palette */
     --color-primary: #0066cc;
-    --color-primary-dark: #004a99;
-    --color-primary-light: #3385d6;
+    --color-primary-dark: #004080;
+    --color-primary-light: #3399ff;
     --color-primary-ultra-light: #e6f3ff;
     --color-secondary: #ff6b35;
     --color-secondary-dark: #e5511a;
@@ -32,12 +32,14 @@
     --color-info-light: #63b3ed;
     --color-info-ultra-light: #ebf8ff;
     /* Enhanced Gradients */
-    --gradient-primary: linear-gradient(135deg, #0066cc 0%, #004a99 100%);
+    --gradient-primary: linear-gradient(135deg, #0066cc 0%, #004080 100%);
     --gradient-secondary: linear-gradient(135deg, #ff6b35 0%, #e5511a 100%);
-    --gradient-sky: linear-gradient(135deg, #87ceeb 0%, #4682b4 50%, #191970 100%);
+    --gradient-sky: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
     --gradient-sunset: linear-gradient(135deg, #ff9a56 0%, #ff6b35 50%, #ff4500 100%);
     --gradient-card: linear-gradient(145deg, #ffffff 0%, #f8fafc 100%);
-    --gradient-glass: linear-gradient(145deg, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0.7) 100%);
+    --gradient-glass: linear-gradient(145deg, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0.85) 100%);
+    --gradient-hero: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    --gradient-mesh: radial-gradient(at 40% 20%, hsla(28, 100%, 74%, 0.3) 0px, transparent 50%), radial-gradient(at 80% 0%, hsla(189, 100%, 56%, 0.3) 0px, transparent 50%), radial-gradient(at 0% 50%, hsla(355, 100%, 93%, 0.3) 0px, transparent 50%);
     /* Enhanced Shadows */
     --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.05);
     --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.1);

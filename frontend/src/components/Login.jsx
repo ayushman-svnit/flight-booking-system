@@ -9,6 +9,7 @@ const Login = () => {
   });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -39,46 +40,89 @@ const Login = () => {
 
   return (
     <div className="login-container">
+      <div className="login-decorations">
+        <div className="decoration-circle circle-1"></div>
+        <div className="decoration-circle circle-2"></div>
+        <div className="decoration-circle circle-3"></div>
+      </div>
+      
       <div className="login-card">
         <div className="login-header">
-          <h2>Flight Booking System</h2>
-          <p>Sign in to your account</p>
+          <div className="logo-wrapper">
+            <div className="logo-icon">✈️</div>
+          </div>
+          <h2>Welcome Back</h2>
+          <p>Sign in to continue your journey</p>
         </div>
 
         <form className="login-form" onSubmit={handleSubmit}>
-          {error && <div className="error-message">{error}</div>}
+          {error && (
+            <div className="error-message">
+              <span className="error-icon">⚠️</span>
+              {error}
+            </div>
+          )}
 
           <div className="form-group">
-            <input
-              name="username"
-              type="text"
-              required
-              className="form-input"
-              placeholder="Username"
-              value={formData.username}
-              onChange={handleChange}
-            />
+            <label htmlFor="username">Username</label>
+            <div className="input-wrapper">
+              <span className="input-icon">👤</span>
+              <input
+                id="username"
+                name="username"
+                type="text"
+                required
+                className="form-input"
+                placeholder="Enter your username"
+                value={formData.username}
+                onChange={handleChange}
+              />
+            </div>
           </div>
 
           <div className="form-group">
-            <input
-              name="password"
-              type="password"
-              required
-              className="form-input"
-              placeholder="Password"
-              value={formData.password}
-              onChange={handleChange}
-            />
+            <label htmlFor="password">Password</label>
+            <div className="input-wrapper password-wrapper">
+              <span className="input-icon">🔒</span>
+              <input
+                id="password"
+                name="password"
+                type={showPassword ? "text" : "password"}
+                required
+                className="form-input password-input"
+                placeholder="Enter your password"
+                value={formData.password}
+                onChange={handleChange}
+              />
+              <button
+                type="button"
+                className="password-toggle"
+                onClick={() => setShowPassword(!showPassword)}
+                aria-label={showPassword ? "Hide password" : "Show password"}
+              >
+                {showPassword ? "👁️" : "👁️‍🗨️"}
+              </button>
+            </div>
           </div>
 
           <button type="submit" disabled={loading} className="submit-button">
-            {loading ? "Signing in..." : "Sign in"}
+            {loading ? (
+              <>
+                <span className="button-spinner"></span>
+                Signing in...
+              </>
+            ) : (
+              <>
+                Sign In
+                <span className="button-arrow">→</span>
+              </>
+            )}
           </button>
 
           <div className="login-footer">
+            <p>Don't have an account?</p>
             <Link to="/register" className="link">
-              Don't have an account? Register
+              Create Account
             </Link>
           </div>
         </form>
