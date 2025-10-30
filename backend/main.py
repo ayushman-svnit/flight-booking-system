@@ -132,12 +132,13 @@ def create_flight(
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid arrival time format")
     
-    if flight.is_daily:
+    # Handle recurring flights (daily or specific weekdays)
+    if flight.is_daily or (flight.weekdays and flight.weekdays.strip()):
         # Calculate duration in minutes
         duration = arrival_dt - departure_dt
         duration_minutes = int(duration.total_seconds() / 60)
         
-        # Extract time components for daily flights
+        # Extract time components for recurring flights
         departure_time_only = departure_dt.strftime("%H:%M:%S")
         arrival_time_only = arrival_dt.strftime("%H:%M:%S")
     
@@ -151,6 +152,7 @@ def create_flight(
         total_seats=flight.total_seats,
         price=flight.price,
         is_daily=flight.is_daily or False,
+        weekdays=flight.weekdays if flight.weekdays else None,
         departure_time_only=departure_time_only,
         arrival_time_only=arrival_time_only,
         duration_minutes=duration_minutes,
@@ -238,6 +240,64 @@ def get_user_bookings(
 ):
     return db.query(Booking).filter(Booking.user_id == current_user.user_id).all()
 
+@app.get("/bookings/{booking_id}")
+def get_booking_details(
+    booking_id: int,
+    current_user: User = Depends(auth.get_current_user),
+    db: Session = Depends(get_db)
+):
+    # Get the booking with flight and airline details
+    booking = db.query(Booking).filter(
+        Booking.booking_id == booking_id
+    ).first()
+    
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    
+    # Check authorization - user can view their own bookings, admin can view all
+    if booking.user_id != current_user.user_id and current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Not authorized to view this booking")
+    
+    # Get flight details
+    flight = db.query(Flight).filter(Flight.flight_id == booking.flight_id).first()
+    if not flight:
+        raise HTTPException(status_code=404, detail="Flight not found")
+    
+    # Get airline details
+    airline = db.query(Airline).filter(Airline.airline_id == flight.airline_id).first()
+    
+    # Get user details
+    user = db.query(User).filter(User.user_id == booking.user_id).first()
+    
+    # Return complete booking details
+    return {
+        "booking_id": booking.booking_id,
+        "user_id": booking.user_id,
+        "username": user.username if user else "Unknown",
+        "email": user.email if user else "N/A",
+        "flight_id": booking.flight_id,
+        "booking_date": booking.booking_date,
+        "travel_date": booking.travel_date,
+        "passengers_count": booking.passengers_count,
+        "total_amount": booking.total_amount,
+        "booking_status": booking.booking_status,
+        "payment_status": booking.payment_status,
+        "pnr_number": booking.pnr_number,
+        "flight": {
+            "flight_number": flight.flight_number,
+            "source_city": flight.source_city,
+            "destination_city": flight.destination_city,
+            "departure_time": flight.departure_time,
+            "arrival_time": flight.arrival_time,
+            "is_daily": flight.is_daily,
+            "price": flight.price,
+            "airline": {
+                "airline_name": airline.airline_name if airline else "Unknown",
+                "airline_code": airline.airline_code if airline else "N/A"
+            }
+        }
+    }
+
 @app.delete("/bookings/{booking_id}")
 def delete_user_booking(
     booking_id: int,
@@ -304,6 +364,77 @@ def get_all_flights(
         raise HTTPException(status_code=403, detail="Not authorized")
     
     return db.query(Flight).all()
+
+@app.put("/flights/{flight_id}", response_model=models.FlightResponse)
+def update_flight(
+    flight_id: int,
+    flight: models.FlightCreate,
+    current_user: User = Depends(auth.get_current_user),
+    db: Session = Depends(get_db)
+):
+    if current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    # Check if flight exists
+    db_flight = db.query(Flight).filter(Flight.flight_id == flight_id).first()
+    if not db_flight:
+        raise HTTPException(status_code=404, detail="Flight not found")
+    
+    # Calculate duration and time-only fields for recurring flights
+    duration_minutes = None
+    departure_time_only = None
+    arrival_time_only = None
+    
+    # Parse datetime strings if needed
+    departure_dt = flight.departure_time
+    arrival_dt = flight.arrival_time
+    
+    if isinstance(flight.departure_time, str):
+        try:
+            departure_dt = datetime.fromisoformat(flight.departure_time.replace('Z', '+00:00'))
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid departure time format")
+    
+    if isinstance(flight.arrival_time, str):
+        try:
+            arrival_dt = datetime.fromisoformat(flight.arrival_time.replace('Z', '+00:00'))
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid arrival time format")
+    
+    # Handle recurring flights (daily or specific weekdays)
+    if flight.is_daily or (flight.weekdays and flight.weekdays.strip()):
+        # Calculate duration in minutes
+        duration = arrival_dt - departure_dt
+        duration_minutes = int(duration.total_seconds() / 60)
+        
+        # Extract time components for recurring flights
+        departure_time_only = departure_dt.strftime("%H:%M:%S")
+        arrival_time_only = arrival_dt.strftime("%H:%M:%S")
+    
+    # Update flight fields
+    db_flight.flight_number = flight.flight_number
+    db_flight.airline_id = flight.airline_id
+    db_flight.source_city = flight.source_city
+    db_flight.destination_city = flight.destination_city
+    db_flight.departure_time = departure_dt
+    db_flight.arrival_time = arrival_dt
+    db_flight.total_seats = flight.total_seats
+    db_flight.price = flight.price
+    db_flight.is_daily = flight.is_daily or False
+    db_flight.weekdays = flight.weekdays if flight.weekdays else None
+    db_flight.departure_time_only = departure_time_only
+    db_flight.arrival_time_only = arrival_time_only
+    db_flight.duration_minutes = duration_minutes
+    
+    # Update available_seats only if total_seats changed and it's not a daily flight
+    if not db_flight.is_daily:
+        # Maintain the same ratio of booked seats
+        booked_seats = db_flight.total_seats - db_flight.available_seats
+        db_flight.available_seats = max(0, flight.total_seats - booked_seats)
+    
+    db.commit()
+    db.refresh(db_flight)
+    return db_flight
 
 @app.delete("/admin/flights/{flight_id}")
 def delete_flight(

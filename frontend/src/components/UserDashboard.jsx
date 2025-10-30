@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
+import BookingTicket from "./BookingTicket";
 
 const UserDashboard = () => {
   const { user, logout, API_BASE } = useAuth();
@@ -13,6 +14,7 @@ const UserDashboard = () => {
     source: "",
     destination: "",
     date: "",
+    weekday: "", // New field for filtering by weekday
   });
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState("search");
@@ -24,6 +26,8 @@ const UserDashboard = () => {
   const [bookingToDelete, setBookingToDelete] = useState(null);
   const [loadingBookings, setLoadingBookings] = useState(false);
   const [notification, setNotification] = useState(null);
+  const [selectedBookingId, setSelectedBookingId] = useState(null);
+  const [showTicketModal, setShowTicketModal] = useState(false);
 
   useEffect(() => {
     fetchCities();
@@ -61,7 +65,21 @@ const UserDashboard = () => {
       if (searchParams.date) params.append("date", searchParams.date);
 
       const response = await axios.get(`${API_BASE}/flights?${params}`);
-      setFlights(response.data);
+      let filteredFlights = response.data;
+      
+      // Filter by weekday if selected
+      if (searchParams.weekday !== "") {
+        filteredFlights = filteredFlights.filter(flight => {
+          if (!flight.weekdays || flight.weekdays.trim() === '') {
+            // If no weekdays specified, flight operates all days
+            return true;
+          }
+          const operatingDays = flight.weekdays.split(',').map(Number);
+          return operatingDays.includes(parseInt(searchParams.weekday));
+        });
+      }
+      
+      setFlights(filteredFlights);
     } catch (error) {
       console.error("Error searching flights:", error);
     }
@@ -186,6 +204,16 @@ const UserDashboard = () => {
     navigate("/login"); // Redirect after logout
   };
 
+  const handleViewTicket = (bookingId) => {
+    setSelectedBookingId(bookingId);
+    setShowTicketModal(true);
+  };
+
+  const closeTicketModal = () => {
+    setShowTicketModal(false);
+    setSelectedBookingId(null);
+  };
+
   return (
     <div className="dashboard">
       {/* Notification Toast */}
@@ -297,6 +325,29 @@ const UserDashboard = () => {
                 </div>
 
                 <div className="form-group">
+                  <label>🗓️ Day of Week</label>
+                  <select
+                    value={searchParams.weekday}
+                    onChange={(e) =>
+                      setSearchParams({
+                        ...searchParams,
+                        weekday: e.target.value,
+                      })
+                    }
+                    className="form-input"
+                  >
+                    <option value="">Any Day</option>
+                    <option value="0">🌙 Monday</option>
+                    <option value="1">💼 Tuesday</option>
+                    <option value="2">🌟 Wednesday</option>
+                    <option value="3">⚡ Thursday</option>
+                    <option value="4">🎉 Friday</option>
+                    <option value="5">🌴 Saturday</option>
+                    <option value="6">☀️ Sunday</option>
+                  </select>
+                </div>
+
+                <div className="form-group">
                   <button
                     onClick={searchFlights}
                     disabled={loading}
@@ -313,30 +364,53 @@ const UserDashboard = () => {
                     <div className="flight-info">
                       <div className="flight-header">
                         <h3>{flight.flight_number}</h3>
-                        {flight.is_daily && (
-                          <span className="daily-badge">
-                            🔄 Daily Flight
-                          </span>
-                        )}
+                        <div className="flight-badges">
+                          {/* Priority: Show weekday badge if specific weekdays are set */}
+                          {flight.weekdays && flight.weekdays.trim() !== '' ? (
+                            <span className="weekdays-badge">
+                              � {(() => {
+                                const days = flight.weekdays.split(',').map(Number);
+                                const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+                                return days.map(d => dayNames[d]).join(', ');
+                              })()}
+                            </span>
+                          ) : flight.is_daily ? (
+                            /* Show "Every Day" only if no specific weekdays */
+                            <span className="daily-badge">
+                              🔄 Every Day
+                            </span>
+                          ) : null}
+                        </div>
                       </div>
                       <p className="route">
                         {flight.source_city} → {flight.destination_city}
                       </p>
-                      {flight.is_daily ? (
+                      {/* Show recurring flight info if is_daily OR has weekdays */}
+                      {(flight.is_daily || (flight.weekdays && flight.weekdays.trim() !== '')) ? (
                         <>
                           <p className="flight-time">
                             Departure: {flight.departure_time_only || 
                               new Date(flight.departure_time).toLocaleTimeString([], {
                                 hour: '2-digit',
                                 minute: '2-digit'
-                              })} (Daily)
+                              })}
+                            {flight.weekdays && flight.weekdays.trim() !== '' ? (
+                              <span style={{ color: '#667eea', fontWeight: 600 }}> (on selected days)</span>
+                            ) : (
+                              <span style={{ color: '#38a169', fontWeight: 600 }}> (every day)</span>
+                            )}
                           </p>
                           <p className="flight-time">
                             Arrival: {flight.arrival_time_only || 
                               new Date(flight.arrival_time).toLocaleTimeString([], {
                                 hour: '2-digit',
                                 minute: '2-digit'
-                              })} (Daily)
+                              })}
+                            {flight.weekdays && flight.weekdays.trim() !== '' ? (
+                              <span style={{ color: '#667eea', fontWeight: 600 }}> (on selected days)</span>
+                            ) : (
+                              <span style={{ color: '#38a169', fontWeight: 600 }}> (every day)</span>
+                            )}
                           </p>
                           <p className="flight-duration">
                             Duration: {flight.duration_minutes ? 
@@ -483,6 +557,13 @@ const UserDashboard = () => {
                       <p className="payment-status">
                         Payment: {booking.payment_status}
                       </p>
+                      <button
+                        onClick={() => handleViewTicket(booking.booking_id)}
+                        className="view-ticket-button"
+                      >
+                        <span className="ticket-icon">🎫</span>
+                        View Ticket
+                      </button>
                       {canCancelBooking(booking) && (
                         <button
                           onClick={() => handleDeleteBooking(booking)}
@@ -524,6 +605,38 @@ const UserDashboard = () => {
           </div>
         )}
       </main>
+
+      {/* Ticket Modal */}
+      {showTicketModal && selectedBookingId && (
+        <div className="modal-overlay">
+          <div className="ticket-modal-content">
+            <button 
+              onClick={closeTicketModal}
+              className="ticket-modal-close"
+            >
+              ✕
+            </button>
+            <BookingTicket 
+              bookingId={selectedBookingId} 
+              API_BASE={API_BASE}
+            />
+            <div className="ticket-modal-actions">
+              <button 
+                onClick={() => window.print()}
+                className="print-button"
+              >
+                🖨️ Print Ticket
+              </button>
+              <button 
+                onClick={closeTicketModal}
+                className="close-button"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Delete Confirmation Modal */}
       {showDeleteConfirm && bookingToDelete && (

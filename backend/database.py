@@ -89,6 +89,7 @@ class Flight(Base):
     departure_time_only = Column(String(8))  # Store time as HH:MM:SS for daily flights
     arrival_time_only = Column(String(8))  # Store time as HH:MM:SS for daily flights
     duration_minutes = Column(Integer)  # Flight duration in minutes
+    weekdays = Column(String(50))  # Comma-separated day numbers (0=Mon, 6=Sun), NULL=all days
     created_by = Column(Integer, ForeignKey("users.user_id"))
     created_at = Column(DateTime, default=datetime.utcnow)
     

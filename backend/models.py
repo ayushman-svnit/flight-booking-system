@@ -41,6 +41,7 @@ class FlightBase(BaseModel):
     departure_time_only: Optional[str] = None
     arrival_time_only: Optional[str] = None
     duration_minutes: Optional[int] = None
+    weekdays: Optional[str] = None  # Comma-separated day numbers (0-6)
 
 class FlightCreate(FlightBase):
     pass
