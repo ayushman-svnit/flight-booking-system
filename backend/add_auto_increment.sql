@@ -1,0 +1,20 @@
+USE flight_booking;
+
+-- Temporarily disable foreign key checks
+SET FOREIGN_KEY_CHECKS = 0;
+
+-- Add AUTO_INCREMENT
+ALTER TABLE users MODIFY user_id INTEGER NOT NULL AUTO_INCREMENT;
+ALTER TABLE airlines MODIFY airline_id INTEGER NOT NULL AUTO_INCREMENT;
+ALTER TABLE flights MODIFY flight_id INTEGER NOT NULL AUTO_INCREMENT;
+ALTER TABLE bookings MODIFY booking_id INTEGER NOT NULL AUTO_INCREMENT;
+ALTER TABLE payments MODIFY payment_id INTEGER NOT NULL AUTO_INCREMENT;
+
+-- Re-enable foreign key checks
+SET FOREIGN_KEY_CHECKS = 1;
+
+-- Verify
+SELECT TABLE_NAME, COLUMN_NAME, EXTRA 
+FROM information_schema.COLUMNS 
+WHERE TABLE_SCHEMA = 'flight_booking' 
+AND COLUMN_KEY = 'PRI';
