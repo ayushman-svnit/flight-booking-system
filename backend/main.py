@@ -97,8 +97,22 @@ def get_flights(
         query = query.filter(Flight.source_city == source)
     if destination:
         query = query.filter(Flight.destination_city == destination)
+    
+    # For date filtering: only apply to non-recurring flights
+    # Recurring flights (is_daily=True or has weekdays) operate on a schedule, not specific dates
     if date:
-        query = query.filter(Flight.departure_time >= date)
+        # Get both recurring and non-recurring flights that match the date criteria
+        from sqlalchemy import or_
+        query = query.filter(
+            or_(
+                # Include all daily flights (they operate every day)
+                Flight.is_daily == True,
+                # Include flights with specific weekdays (they operate on those days)
+                Flight.weekdays.isnot(None),
+                # Include non-recurring flights that depart on or after the search date
+                Flight.departure_time >= date
+            )
+        )
     
     return query.all()
 

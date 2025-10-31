@@ -64,21 +64,69 @@ const UserDashboard = () => {
         params.append("destination", searchParams.destination);
       if (searchParams.date) params.append("date", searchParams.date);
 
-      const response = await axios.get(`${API_BASE}/flights?${params}`);
+      const url = `${API_BASE}/flights?${params}`;
+      console.log('Making API call to:', url);
+      console.log('API_BASE:', API_BASE);
+      console.log('Params:', {
+        source: searchParams.source,
+        destination: searchParams.destination,
+        date: searchParams.date
+      });
+      
+      const response = await axios.get(url);
+      
+      console.log('Full response:', response);
+      console.log('Response status:', response.status);
+      console.log('Response data:', response.data);
+      
       let filteredFlights = response.data;
       
-      // Filter by weekday if selected
+      console.log('Raw API response:', filteredFlights);
+      console.log('Number of flights from API:', filteredFlights.length);
+      
+      // Log each flight's details
+      filteredFlights.forEach(flight => {
+        console.log(`Flight ${flight.flight_number}: weekdays="${flight.weekdays}", is_daily=${flight.is_daily}`);
+      });
+      
+      // Determine which weekday to filter by
+      let weekdayToFilter = null;
+      
+      // Priority 1: If user explicitly selected a weekday from dropdown
       if (searchParams.weekday !== "") {
+        weekdayToFilter = parseInt(searchParams.weekday);
+      }
+      // Priority 2: If user selected a date, calculate its weekday
+      else if (searchParams.date) {
+        // Parse date correctly by adding 'T00:00:00' to avoid timezone issues
+        const selectedDate = new Date(searchParams.date + 'T00:00:00');
+        const dayOfWeek = selectedDate.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+        // Convert JavaScript day (0=Sun) to our format (0=Mon)
+        weekdayToFilter = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+        
+        console.log('Selected date:', searchParams.date);
+        console.log('Day of week:', dayOfWeek);
+        console.log('Adjusted weekday:', weekdayToFilter);
+      }
+      
+      // Filter by weekday (either from dropdown or calculated from date)
+      if (weekdayToFilter !== null) {
+        console.log('Filtering by weekday:', weekdayToFilter);
         filteredFlights = filteredFlights.filter(flight => {
+          // If flight has no specific weekdays, it operates all days - include it
           if (!flight.weekdays || flight.weekdays.trim() === '') {
-            // If no weekdays specified, flight operates all days
+            console.log(`Flight ${flight.flight_number}: operates all days - INCLUDED`);
             return true;
           }
+          // Check if flight operates on the target weekday
           const operatingDays = flight.weekdays.split(',').map(Number);
-          return operatingDays.includes(parseInt(searchParams.weekday));
+          const matches = operatingDays.includes(weekdayToFilter);
+          console.log(`Flight ${flight.flight_number}: operates on ${operatingDays}, looking for ${weekdayToFilter} - ${matches ? 'INCLUDED' : 'EXCLUDED'}`);
+          return matches;
         });
       }
       
+      console.log('Filtered flights:', filteredFlights.length);
       setFlights(filteredFlights);
     } catch (error) {
       console.error("Error searching flights:", error);
@@ -115,7 +163,8 @@ const UserDashboard = () => {
   const handleBookingClick = (flight) => {
     const passengers = prompt("Enter number of passengers:");
     if (passengers && !isNaN(passengers)) {
-      if (flight.is_daily) {
+      // Show date selector for daily flights OR weekday-specific flights
+      if (flight.is_daily || (flight.weekdays && flight.weekdays.trim() !== '')) {
         setSelectedFlight({ ...flight, passengers: parseInt(passengers) });
         setShowDateSelector(true);
       } else {
@@ -125,15 +174,34 @@ const UserDashboard = () => {
   };
 
   const confirmDailyFlightBooking = () => {
-    if (selectedTravelDate && selectedFlight) {
-      bookFlight(
-        selectedFlight.flight_id, 
-        selectedFlight.passengers, 
-        selectedTravelDate
-      );
-    } else {
+    if (!selectedTravelDate || !selectedFlight) {
       alert("Please select a travel date");
+      return;
     }
+
+    // Validate that the selected date matches the flight's operating days
+    if (selectedFlight.weekdays && selectedFlight.weekdays.trim() !== '') {
+      const selectedDate = new Date(selectedTravelDate);
+      const selectedDayOfWeek = selectedDate.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+      
+      // Convert JavaScript day (0=Sun) to our format (0=Mon)
+      const adjustedDay = selectedDayOfWeek === 0 ? 6 : selectedDayOfWeek - 1;
+      
+      const operatingDays = selectedFlight.weekdays.split(',').map(Number);
+      
+      if (!operatingDays.includes(adjustedDay)) {
+        const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+        const operatingDayNames = operatingDays.map(d => dayNames[d]).join(', ');
+        alert(`This flight only operates on: ${operatingDayNames}. Please select a date that falls on one of these days.`);
+        return;
+      }
+    }
+
+    bookFlight(
+      selectedFlight.flight_id, 
+      selectedFlight.passengers, 
+      selectedTravelDate
+    );
   };
 
   const handleDeleteBooking = (booking) => {
@@ -468,7 +536,20 @@ const UserDashboard = () => {
                       Flight: {selectedFlight.flight_number}<br />
                       Route: {selectedFlight.source_city} → {selectedFlight.destination_city}<br />
                       Passengers: {selectedFlight.passengers}<br />
-                      Daily Departure: {selectedFlight.departure_time_only || 
+                      {selectedFlight.weekdays && selectedFlight.weekdays.trim() !== '' ? (
+                        <>
+                          Operates on: <strong style={{ color: '#667eea' }}>
+                            {(() => {
+                              const days = selectedFlight.weekdays.split(',').map(Number);
+                              const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+                              return days.map(d => dayNames[d]).join(', ');
+                            })()}
+                          </strong><br />
+                        </>
+                      ) : (
+                        <>Operates: <strong style={{ color: '#38a169' }}>Every Day</strong><br /></>
+                      )}
+                      Departure Time: {selectedFlight.departure_time_only || 
                         new Date(selectedFlight.departure_time).toLocaleTimeString([], {
                           hour: '2-digit',
                           minute: '2-digit'
@@ -476,6 +557,11 @@ const UserDashboard = () => {
                     </p>
                     <div className="modal-form">
                       <label>Travel Date:</label>
+                      {selectedFlight.weekdays && selectedFlight.weekdays.trim() !== '' && (
+                        <p style={{ fontSize: '0.85rem', color: '#666', marginBottom: '8px' }}>
+                          ℹ️ Please select a date that falls on one of the operating days above
+                        </p>
+                      )}
                       <input
                         type="date"
                         value={selectedTravelDate}
