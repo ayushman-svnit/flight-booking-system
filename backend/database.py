@@ -1,44 +1,23 @@
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, Float, Boolean, Enum, ForeignKey
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, Float, Boolean, ForeignKey, Text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
-import enum
 from datetime import datetime
 import os
+import dotenv
+from passlib.context import CryptContext
 
-# Use SQLite for simplicity
-DATABASE_URL = "sqlite:///./flight_booking.db"
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+def get_password_hash(password):
+    return pwd_context.hash(password)
+
+dotenv.load_dotenv()
+DATABASE_URL = os.getenv("DATABASE_URL", "mysql+pymysql://root:@localhost/flight_booking")
+print(f"🔧 Database URL: {DATABASE_URL}")  # Debug line to verify
+
+engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
-
-class UserType(enum.Enum):
-    admin = "admin"
-    user = "user"
-
-class FlightStatus(enum.Enum):
-    scheduled = "scheduled"
-    delayed = "delayed"
-    cancelled = "cancelled"
-    completed = "completed"
-
-class BookingStatus(enum.Enum):
-    confirmed = "confirmed"
-    pending = "pending"
-    cancelled = "cancelled"
-    completed = "completed"
-
-class PaymentStatus(enum.Enum):
-    pending = "pending"
-    completed = "completed"
-    failed = "failed"
-    refunded = "refunded"
-
-class PaymentMethod(enum.Enum):
-    credit_card = "credit_card"
-    debit_card = "debit_card"
-    upi = "upi"
-    net_banking = "net_banking"
 
 class User(Base):
     __tablename__ = "users"
@@ -50,11 +29,10 @@ class User(Base):
     first_name = Column(String(50), nullable=False)
     last_name = Column(String(50), nullable=False)
     phone_number = Column(String(15))
-    user_type = Column(String(10), default="user")  # Changed from Enum to String
+    user_type = Column(String(10), default="user")
     created_at = Column(DateTime, default=datetime.utcnow)
     is_active = Column(Boolean, default=True)
     
-    # Relationships
     flights_created = relationship("Flight", back_populates="creator")
     bookings = relationship("Booking", back_populates="user")
 
@@ -68,7 +46,6 @@ class Airline(Base):
     email = Column(String(100))
     is_active = Column(Boolean, default=True)
     
-    # Relationships
     flights = relationship("Flight", back_populates="airline")
 
 class Flight(Base):
@@ -84,16 +61,15 @@ class Flight(Base):
     total_seats = Column(Integer, nullable=False)
     available_seats = Column(Integer, nullable=False)
     price = Column(Float, nullable=False)
-    flight_status = Column(String(20), default="scheduled")  # Changed from Enum
-    is_daily = Column(Boolean, default=False)  # New field for daily flights
-    departure_time_only = Column(String(8))  # Store time as HH:MM:SS for daily flights
-    arrival_time_only = Column(String(8))  # Store time as HH:MM:SS for daily flights
-    duration_minutes = Column(Integer)  # Flight duration in minutes
-    weekdays = Column(String(50))  # Comma-separated day numbers (0=Mon, 6=Sun), NULL=all days
+    flight_status = Column(String(20), default="scheduled")
+    is_daily = Column(Boolean, default=False)
+    departure_time_only = Column(String(8))
+    arrival_time_only = Column(String(8))
+    duration_minutes = Column(Integer)
+    weekdays = Column(String(50))
     created_by = Column(Integer, ForeignKey("users.user_id"))
     created_at = Column(DateTime, default=datetime.utcnow)
     
-    # Relationships
     airline = relationship("Airline", back_populates="flights")
     creator = relationship("User", back_populates="flights_created")
     bookings = relationship("Booking", back_populates="flight")
@@ -105,17 +81,16 @@ class Booking(Base):
     user_id = Column(Integer, ForeignKey("users.user_id"))
     flight_id = Column(Integer, ForeignKey("flights.flight_id"))
     booking_date = Column(DateTime, default=datetime.utcnow)
-    travel_date = Column(DateTime)  # New field for selected travel date (for daily flights)
+    travel_date = Column(DateTime)
     passengers_count = Column(Integer, nullable=False)
     total_amount = Column(Float, nullable=False)
-    booking_status = Column(String(20), default="confirmed")  # Changed from Enum
-    payment_status = Column(String(20), default="pending")  # Changed from Enum
+    booking_status = Column(String(20), default="confirmed")
+    payment_status = Column(String(20), default="pending")
     pnr_number = Column(String(10), unique=True, nullable=False)
     
-    # Relationships
     user = relationship("User", back_populates="bookings")
     flight = relationship("Flight", back_populates="bookings")
-    payment = relationship("Payment", back_populates="booking", uselist=False)
+    payments = relationship("Payment", back_populates="booking")
 
 class Payment(Base):
     __tablename__ = "payments"
@@ -123,27 +98,40 @@ class Payment(Base):
     payment_id = Column(Integer, primary_key=True, index=True)
     booking_id = Column(Integer, ForeignKey("bookings.booking_id"))
     payment_amount = Column(Float, nullable=False)
-    payment_method = Column(String(20), nullable=False)  # Changed from Enum
+    payment_method = Column(String(20), nullable=False)
     payment_date = Column(DateTime, default=datetime.utcnow)
     transaction_id = Column(String(100), unique=True)
-    payment_status = Column(String(20), default="pending")  # Changed from Enum
+    payment_status = Column(String(20), default="pending")
     
-    # Relationships
-    booking = relationship("Booking", back_populates="payment")
+    booking = relationship("Booking", back_populates="payments")
 
-# Create tables
+class AuditLog(Base):
+    __tablename__ = "audit_log"
+    
+    audit_id = Column(Integer, primary_key=True, index=True)
+    table_name = Column(String(100), nullable=False)
+    operation = Column(String(50), nullable=False)
+    record_id = Column(Integer, nullable=False)
+    old_value = Column(Text)
+    new_value = Column(Text)
+    changed_by = Column(Integer, ForeignKey("users.user_id"))
+    changed_at = Column(DateTime, default=datetime.utcnow)
+    description = Column(Text)
+    
+    changer = relationship("User")
+
 def create_tables():
-    Base.metadata.create_all(bind=engine)
+    # Note: In MySQL, tables are created by your SQL script
+    # This is kept for compatibility but won't create tables in MySQL
+    print("Note: Tables should be created using the provided SQL script")
+    pass
 
-# Initialize with sample data
 def init_data():
     db = SessionLocal()
     try:
         # Check if admin user exists
         admin_user = db.query(User).filter(User.username == "admin").first()
         if not admin_user:
-            # Create admin user with password 'admin123'
-            from auth import get_password_hash
             admin_user = User(
                 username="admin",
                 email="admin@flight.com",
@@ -154,78 +142,12 @@ def init_data():
             )
             db.add(admin_user)
             db.commit()
-            db.refresh(admin_user)
-        
-        # Check if airlines exist
-        if db.query(Airline).count() == 0:
-            airlines = [
-                Airline(
-                    airline_name="Air India",
-                    airline_code="AI",
-                    contact_number="18001801407",
-                    email="contact@airindia.com"
-                ),
-                Airline(
-                    airline_name="IndiGo",
-                    airline_code="6E",
-                    contact_number="01244637979",
-                    email="customercare@goindigo.in"
-                ),
-                Airline(
-                    airline_name="SpiceJet",
-                    airline_code="SG",
-                    contact_number="9876543210",
-                    email="care@spicejet.com"
-                )
-            ]
-            db.add_all(airlines)
-            db.commit()
-        
-        # Check if flights exist
-        if db.query(Flight).count() == 0:
-            from datetime import datetime, timedelta
-            flights = [
-                Flight(
-                    flight_number="AI101",
-                    airline_id=1,
-                    source_city="Delhi",
-                    destination_city="Mumbai",
-                    departure_time=datetime.utcnow() + timedelta(days=1),
-                    arrival_time=datetime.utcnow() + timedelta(days=1, hours=2),
-                    total_seats=180,
-                    available_seats=180,
-                    price=4500.00,
-                    created_by=admin_user.user_id
-                ),
-                Flight(
-                    flight_number="6E202",
-                    airline_id=2,
-                    source_city="Mumbai",
-                    destination_city="Chennai",
-                    departure_time=datetime.utcnow() + timedelta(days=1, hours=4),
-                    arrival_time=datetime.utcnow() + timedelta(days=1, hours=6),
-                    total_seats=162,
-                    available_seats=162,
-                    price=3200.00,
-                    created_by=admin_user.user_id
-                ),
-                Flight(
-                    flight_number="SG305",
-                    airline_id=3,
-                    source_city="Bangalore",
-                    destination_city="Delhi",
-                    departure_time=datetime.utcnow() + timedelta(days=2),
-                    arrival_time=datetime.utcnow() + timedelta(days=2, hours=2),
-                    total_seats=144,
-                    available_seats=144,
-                    price=5200.00,
-                    created_by=admin_user.user_id
-                )
-            ]
-            db.add_all(flights)
-            db.commit()
+            print("Admin user created")
+        else:
+            print("Admin user already exists")
             
     except Exception as e:
         print(f"Error initializing data: {e}")
+        db.rollback()
     finally:
         db.close()
